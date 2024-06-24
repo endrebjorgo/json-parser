@@ -1,0 +1,9 @@
+{
+    "This": {
+        "is": ["valid", "json"],
+        "which": "I'm"
+    },
+    "testing": true,
+    "number": 9,
+    "strange\"string": "hello,"
+}
