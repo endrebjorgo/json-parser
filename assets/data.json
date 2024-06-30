@@ -1,9 +1,10 @@
 {
     "This": {
-        "is": ["valid", "json"],
+        "is": ["very valid", "json"],
         "which": "I'm"
     },
     "testing": true,
     "number": 9,
-    "strange\"string": "hello,"
+    "strange\"str\nin\tg": "hello,",
+    "comment": "// /* <!-- --"
 }
