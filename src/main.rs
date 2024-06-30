@@ -1,7 +1,19 @@
 use std::{env, fs};
 use std::process::exit;
+use std::collections::HashMap;
+use std::cell::Cell;
 
 type Result<T> = std::result::Result<T, ()>;
+
+#[derive(Debug)]
+enum JSONValue {
+    Obj(HashMap<String, JSONValue>),
+    Arr(Vec<JSONValue>),
+    Str(String),
+    Num(f64),
+    Bool(bool),
+    Null,
+}
 
 fn tokenize(bytes: &Vec<u8>) -> Vec<String> {
     let mut tokens = Vec::new();
@@ -77,6 +89,11 @@ fn tokenize(bytes: &Vec<u8>) -> Vec<String> {
             '\"' => {
                 // Quotes. Signify the start/end of a string, but not if they 
                 // are escaped inside of a string.
+                
+                // TODO: Problem arises when there is a one character string 
+                // containing an escaped ". These are basically parsed the same 
+                // as a quote. They need to be differentiated...
+                
                 if escape {
                     assert!(in_string);
                     curr_token.push(c);
@@ -113,81 +130,161 @@ fn tokenize(bytes: &Vec<u8>) -> Vec<String> {
     return tokens;
 }
 
-fn parse_json(bytes: Vec<u8>) -> Vec<String> {
-    // TODO: Make recursive? Would help...
-    let mut tokens = tokenize(&bytes).into_iter();
+fn parse_object(tokens: &Vec<String>, cursor: &Cell<usize>) -> JSONValue {
+    let mut hm = HashMap::<String, JSONValue>::new();
     loop {
-        match tokens.next() {
-            Some(token) => {
-                match token.as_str() {
-                    "{" => {
-                        // Parsing an object
-                        let mut keys = Vec::new();
-                        //let mut values = Vec::new();  Requires some thought...
-                        loop {
-                            if tokens.next().unwrap().as_str() == "}" {
-                                break;
-                            }
-                            assert_eq!("\"", tokens.next().unwrap().as_str());
-                            keys.push(tokens.next().unwrap());
-                            assert_eq!(":", tokens.next().unwrap().as_str());
-                            // TODO: Push value to values
-                        }
-                    },
-                    "[" => {
-                        // Parsing an array
-                    },
-                    /*
-                    "[" => {
-                        // Parsing an array
-                        let mut array = Vec::new();
-                        loop {
-                            match tokens.next().unwrap().as_str() {
-                                "]" => {
-                                    break;
-                                },
-                                "\"" => {
-                                    // Parsing string
-                                    array.push(tokens.next().unwrap());
-                                    assert_eq!("\"", tokens.next().unwrap().as_str());
-                                },
-                                _ => {
-                                    // Parsing someting else
-                                },
-                            }
-                            
-                            match tokens.next().unwrap().as_str() {
-                                "," => continue,
-                                "]" => break,
-                                _ => unreachable!(),
-                            }
-                        }
-                    },
-                    */
+        match tokens[cursor.get()].as_str() {
+            "}" => {
+                // Empty object
+                cursor.set(cursor.get() + 1);
+                break;
+            },
+            "\"" => {
+                cursor.set(cursor.get() + 1);
+                let mut key = String::new();
+                let s = &tokens[cursor.get()];
+                match s.as_str() {
                     "\"" => {
-                        let string = tokens.next().unwrap();
-                        assert_eq!("\"", tokens.next().unwrap().as_str());
-                    },
-                    "true" => {
-                        // Parsing true keyword (assuming outside of string)
-                    },
-                    "false" => {
-                        // Parsing false keyword (assuming outside of string)
-                    },
-                    "null" => {
-                        // Parsing null keyword (assuming outside of string)
+                        cursor.set(cursor.get() + 1);
                     },
                     _ => {
-                        // Parsing something else...
-                    }
+                        cursor.set(cursor.get() + 1);
+                        assert_eq!(tokens[cursor.get()].as_str(), "\"");
+                        cursor.set(cursor.get() + 1);
+                        key.push_str(s);
+                    },
                 }
+                assert_eq!(tokens[cursor.get()], ":");
+                cursor.set(cursor.get() + 1);
+                let value = parse_value(&tokens, &cursor);
+                hm.insert(key, value);
             },
-            None => {
+            _ => unreachable!(), // Assuming valid JSON.
+        }
+        match tokens[cursor.get()].as_str() {
+            "," => {
+                // New entry
+                cursor.set(cursor.get() + 1);
+                continue;
+            },
+            "}" => {
+                // End of object
+                cursor.set(cursor.get() + 1);
                 break;
+            },
+            x => {
+                println!("{}", x);
+                println!("{:?}", hm);
+                println!("{:?}", &tokens[cursor.get()-2..cursor.get()+2]);
+                unreachable!();
+            }
+        }
+    }
+    return JSONValue::Obj(hm);
+}
+
+fn parse_array(tokens: &Vec<String>, cursor: &Cell<usize>) -> JSONValue {
+    let mut array = Vec::<JSONValue>::new();
+
+    loop {
+        match tokens[cursor.get()].as_str() {
+            "]" => {
+                // Empty array
+                cursor.set(cursor.get() + 1);
+                break;
+            },
+            _ => {
+                let value = parse_value(&tokens, &cursor);
+                array.push(value);
+            }
+        }
+
+        match tokens[cursor.get()].as_str() {
+            "," => {
+                // New entry
+                cursor.set(cursor.get() + 1);
+                continue;
+            },
+            "]" => {
+                // End of array 
+                cursor.set(cursor.get() + 1);
+                break;
+            },
+            y => {
+                unreachable!();
             },
         }
     }
-    return tokens.collect(); // For now to match type
+    return JSONValue::Arr(array);
+}
+
+fn parse_number(tokens: &Vec<String>, cursor: &Cell<usize>) -> JSONValue {
+    return JSONValue::Num(1.0);
+}
+
+fn parse_value(tokens: &Vec<String>, cursor: &Cell<usize>) -> JSONValue {
+    match tokens[cursor.get()].as_str() {
+        "{" => {
+            // Parsing object
+            cursor.set(cursor.get() + 1);
+            return parse_object(&tokens, cursor);
+        },
+        "[" => {
+            // Parsing array
+            cursor.set(cursor.get() + 1);
+            return parse_array(&tokens, cursor);
+        },
+        "\"" => {
+            // Parsing string
+            cursor.set(cursor.get() + 1);
+            let s = &tokens[cursor.get()];
+            match s.as_str() {
+                "\"" => {
+                    cursor.set(cursor.get() + 1);
+                    return JSONValue::Str(String::new());
+                },
+                _ => {
+                    cursor.set(cursor.get() + 1);
+                    assert_eq!(tokens[cursor.get()].as_str(), "\"");
+                    cursor.set(cursor.get() + 1);
+                    return JSONValue::Str(String::from(s));
+                },
+            }
+        },
+        "true" => {
+            // Parsing true value
+            cursor.set(cursor.get() + 1);
+            return JSONValue::Bool(true);
+        },
+        "false" => {
+            // Parsing false value
+            cursor.set(cursor.get() + 1);
+            return JSONValue::Bool(false);
+        },
+        "null" => {
+            // Parsing null value
+            cursor.set(cursor.get() + 1);
+            return JSONValue::Null;
+        },
+        x => {
+            // Parsing number (TODO: Is this true?)
+            // Temporary workaround to not bother implementing numbers yet...
+            let mut c = cursor.get();
+            let forbidden_tokens = vec![",", "\"", "]", "}"];
+            while !forbidden_tokens.contains(&tokens[c].as_str()) {
+                c += 1;
+            }
+            cursor.set(c);
+            return JSONValue::Num(1.0);
+        },
+    }
+}
+
+fn parse_json(bytes: &Vec<u8>) -> JSONValue {
+    let tokens = tokenize(bytes);
+    let cursor = Cell::<usize>::new(0);
+
+    return parse_value(&tokens, &cursor);
 }
 
 fn main() -> Result<()> {
@@ -211,7 +308,15 @@ fn main() -> Result<()> {
     for (i, r) in res.iter().enumerate() {
         println!("Token {:03}: {}",i , r);
     }
-    let x = parse_json(bytes);
+    let x = parse_json(&bytes);
+    println!("{:?}", x);
 
     Ok(())
 }
+
+/*
+#[cfg(test)]
+mod tests {
+
+}
+*/
