@@ -6,10 +6,6 @@ use std::path::Path;
 use std::ffi::OsStr;
 use std::str::FromStr;
 
-type Result<T> = std::result::Result<T, ()>;
-
-// TODO: Reverse the order of functions.
-
 #[derive(Debug)]
 enum JSONValue {
     Obj(HashMap<String, JSONValue>),
@@ -18,6 +14,13 @@ enum JSONValue {
     Num(f64),
     Bool(bool),
     Null,
+}
+
+fn parse_json(bytes: &Vec<u8>) -> JSONValue {
+    let tokens = tokenize(bytes);
+    let cursor = Cell::<usize>::new(0);
+
+    return parse_value(&tokens, &cursor);
 }
 
 fn tokenize(bytes: &Vec<u8>) -> Vec<String> {
@@ -131,6 +134,46 @@ fn tokenize(bytes: &Vec<u8>) -> Vec<String> {
     return tokens;
 }
 
+fn parse_value(tokens: &Vec<String>, cursor: &Cell<usize>) -> JSONValue {
+    match tokens[cursor.get()].as_str() {
+        "{" => {
+            // Parsing object
+            cursor.set(cursor.get() + 1);
+            return parse_object(&tokens, cursor);
+        },
+        "[" => {
+            // Parsing array
+            cursor.set(cursor.get() + 1);
+            return parse_array(&tokens, cursor);
+        },
+        "\"" => {
+            // Parsing string
+            cursor.set(cursor.get() + 1);
+            return JSONValue::Str(parse_string(&tokens, cursor));
+        },
+        "true" => {
+            // Parsing true value
+            cursor.set(cursor.get() + 1);
+            return JSONValue::Bool(true);
+        },
+        "false" => {
+            // Parsing false value
+            cursor.set(cursor.get() + 1);
+            return JSONValue::Bool(false);
+        },
+        "null" => {
+            // Parsing null value
+            cursor.set(cursor.get() + 1);
+            return JSONValue::Null;
+        },
+        _ => {
+            // Parsing number (TODO: Is this true?)
+            // Temporary workaround to not bother implementing numbers yet...
+            return parse_number(&tokens, cursor);
+        },
+    }
+}
+
 fn parse_object(tokens: &Vec<String>, cursor: &Cell<usize>) -> JSONValue {
     let mut hm = HashMap::<String, JSONValue>::new();
     loop {
@@ -207,13 +250,6 @@ fn parse_array(tokens: &Vec<String>, cursor: &Cell<usize>) -> JSONValue {
     return JSONValue::Arr(array);
 }
 
-fn parse_number(tokens: &Vec<String>, cursor: &Cell<usize>) -> JSONValue {
-    let token = &tokens[cursor.get()];
-    let number = f64::from_str(token).unwrap();
-    cursor.set(cursor.get() + 1);
-    return JSONValue::Num(number);
-}
-
 fn parse_string(tokens: &Vec<String>, cursor: &Cell<usize>) -> String {
     let s = &tokens[cursor.get()];
     cursor.set(cursor.get() + 1);
@@ -230,52 +266,14 @@ fn parse_string(tokens: &Vec<String>, cursor: &Cell<usize>) -> String {
     }
 }
 
-fn parse_value(tokens: &Vec<String>, cursor: &Cell<usize>) -> JSONValue {
-    match tokens[cursor.get()].as_str() {
-        "{" => {
-            // Parsing object
-            cursor.set(cursor.get() + 1);
-            return parse_object(&tokens, cursor);
-        },
-        "[" => {
-            // Parsing array
-            cursor.set(cursor.get() + 1);
-            return parse_array(&tokens, cursor);
-        },
-        "\"" => {
-            // Parsing string
-            cursor.set(cursor.get() + 1);
-            return JSONValue::Str(parse_string(&tokens, cursor));
-        },
-        "true" => {
-            // Parsing true value
-            cursor.set(cursor.get() + 1);
-            return JSONValue::Bool(true);
-        },
-        "false" => {
-            // Parsing false value
-            cursor.set(cursor.get() + 1);
-            return JSONValue::Bool(false);
-        },
-        "null" => {
-            // Parsing null value
-            cursor.set(cursor.get() + 1);
-            return JSONValue::Null;
-        },
-        _ => {
-            // Parsing number (TODO: Is this true?)
-            // Temporary workaround to not bother implementing numbers yet...
-            return parse_number(&tokens, cursor);
-        },
-    }
+fn parse_number(tokens: &Vec<String>, cursor: &Cell<usize>) -> JSONValue {
+    let token = &tokens[cursor.get()];
+    let number = f64::from_str(token).unwrap();
+    cursor.set(cursor.get() + 1);
+    return JSONValue::Num(number);
 }
 
-fn parse_json(bytes: &Vec<u8>) -> JSONValue {
-    let tokens = tokenize(bytes);
-    let cursor = Cell::<usize>::new(0);
-
-    return parse_value(&tokens, &cursor);
-}
+type Result<T> = std::result::Result<T, ()>;
 
 fn main() -> Result<()> {
     let argv = env::args().collect::<Vec<String>>();
