@@ -19,7 +19,6 @@ enum JSONValue {
 fn parse_json(bytes: &Vec<u8>) -> JSONValue {
     let tokens = tokenize(bytes);
     let cursor = Cell::<usize>::new(0);
-
     return parse_value(&tokens, &cursor);
 }
 
@@ -33,18 +32,19 @@ fn tokenize(bytes: &Vec<u8>) -> Vec<String> {
         let c = char::from_u32(*b as u32).unwrap();
         match c {
             '\n' | '\r' | '\t' => {
-                // White space - just ignore these for now, but make them end 
-                // the previous token
+                // White space. These are ignored by the tokenizer, but mark the
+                // end of the current token..
                 assert!(!in_string);
+                assert!(!escape);
                 if !curr_token.is_empty() {
                     tokens.push(curr_token.iter().collect());
                     curr_token.clear();
                 }
-                escape = false;
             },
-            //'{' | '}' | '[' | ']' | ':' | ',' | '+' | '-' | '.' => {
             '{' | '}' | '[' | ']' | ':' | ',' => {
-                // Special characters. Treated as normal characters in string
+                // Special separator characters. Treated as normal characters in
+                // strings, but become a single token outside of them.
+                assert!(!escape);
                 if in_string {
                     curr_token.push(c);
                 } else {
@@ -54,11 +54,10 @@ fn tokenize(bytes: &Vec<u8>) -> Vec<String> {
                     }
                     tokens.push(c.to_string());
                 }
-                escape = false;
             },
             '\\' => {
-                // Backslash. Assumes correct JSON for now, so it must be in a 
-                // string and signifies that a character is to be escaped.
+                // Backslash. Must be in a string (if valid JSON) and marks that
+                // a character will be escaped. Becomes '\' if already escaped.
                 assert!(in_string);
                 if escape {
                     curr_token.push(c);
@@ -68,12 +67,13 @@ fn tokenize(bytes: &Vec<u8>) -> Vec<String> {
                 }
             },
             '/' => {
-                // Forward slash. CAN be escaped.
+                // Forward slash. Can be escaped.
+                assert!(in_string);
                 curr_token.push(c);
                 escape = false; // Just in case the '/' was escaped.
             },
             'b' | 'f' | 'n' | 'r' | 't' => {
-                // Escapable characters in JSON strings. If in a string and 
+                // Escape characters in JSON strings. If in a string and 
                 // preceded by a backslash, a character such as n becomes \n.
                 if escape {
                     assert!(in_string);
@@ -113,6 +113,7 @@ fn tokenize(bytes: &Vec<u8>) -> Vec<String> {
             },
             ' ' => {
                 // Spaces are ignored if they are not part of a string
+                assert!(!escape);
                 if in_string {
                     curr_token.push(c);
                 } else {
@@ -121,12 +122,11 @@ fn tokenize(bytes: &Vec<u8>) -> Vec<String> {
                         curr_token.clear();
                     }
                 }
-                escape = false;
             },
             _ => {
                 // Other characters. These just combine into numbers/words/other
+                assert!(!escape);
                 curr_token.push(c);
-                escape = false;
             },
         }
     }
@@ -167,8 +167,7 @@ fn parse_value(tokens: &Vec<String>, cursor: &Cell<usize>) -> JSONValue {
             return JSONValue::Null;
         },
         _ => {
-            // Parsing number (TODO: Is this true?)
-            // Temporary workaround to not bother implementing numbers yet...
+            // Parsing number
             return parse_number(&tokens, cursor);
         },
     }
@@ -251,14 +250,14 @@ fn parse_array(tokens: &Vec<String>, cursor: &Cell<usize>) -> JSONValue {
 }
 
 fn parse_string(tokens: &Vec<String>, cursor: &Cell<usize>) -> String {
-    let s = &tokens[cursor.get()];
+    let curr = &tokens[cursor.get()];
     cursor.set(cursor.get() + 1);
-    let t = &tokens[cursor.get()];
+    let next = &tokens[cursor.get()];
 
-    match t.as_str() {
+    match next.as_str() {
         "\"" => {
             cursor.set(cursor.get() + 1);
-            return String::from(s);
+            return String::from(curr);
         },
         _ => {
             return String::new();
