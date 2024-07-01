@@ -2,8 +2,12 @@ use std::{env, fs};
 use std::process::exit;
 use std::collections::HashMap;
 use std::cell::Cell;
+use std::path::Path;
+use std::ffi::OsStr;
 
 type Result<T> = std::result::Result<T, ()>;
+
+// TODO: Reverse the order of functions.
 
 #[derive(Debug)]
 enum JSONValue {
@@ -141,19 +145,7 @@ fn parse_object(tokens: &Vec<String>, cursor: &Cell<usize>) -> JSONValue {
             },
             "\"" => {
                 cursor.set(cursor.get() + 1);
-                let mut key = String::new();
-                let s = &tokens[cursor.get()];
-                match s.as_str() {
-                    "\"" => {
-                        cursor.set(cursor.get() + 1);
-                    },
-                    _ => {
-                        cursor.set(cursor.get() + 1);
-                        assert_eq!(tokens[cursor.get()].as_str(), "\"");
-                        cursor.set(cursor.get() + 1);
-                        key.push_str(s);
-                    },
-                }
+                let mut key = parse_string(&tokens, &cursor);
                 assert_eq!(tokens[cursor.get()], ":");
                 cursor.set(cursor.get() + 1);
                 let value = parse_value(&tokens, &cursor);
@@ -222,6 +214,22 @@ fn parse_number(tokens: &Vec<String>, cursor: &Cell<usize>) -> JSONValue {
     return JSONValue::Num(1.0);
 }
 
+fn parse_string(tokens: &Vec<String>, cursor: &Cell<usize>) -> String {
+    let s = &tokens[cursor.get()];
+    cursor.set(cursor.get() + 1);
+    let t = &tokens[cursor.get()];
+
+    match t.as_str() {
+        "\"" => {
+            cursor.set(cursor.get() + 1);
+            return String::from(s);
+        },
+        _ => {
+            return String::new();
+        }
+    }
+}
+
 fn parse_value(tokens: &Vec<String>, cursor: &Cell<usize>) -> JSONValue {
     match tokens[cursor.get()].as_str() {
         "{" => {
@@ -237,19 +245,7 @@ fn parse_value(tokens: &Vec<String>, cursor: &Cell<usize>) -> JSONValue {
         "\"" => {
             // Parsing string
             cursor.set(cursor.get() + 1);
-            let s = &tokens[cursor.get()];
-            match s.as_str() {
-                "\"" => {
-                    cursor.set(cursor.get() + 1);
-                    return JSONValue::Str(String::new());
-                },
-                _ => {
-                    cursor.set(cursor.get() + 1);
-                    assert_eq!(tokens[cursor.get()].as_str(), "\"");
-                    cursor.set(cursor.get() + 1);
-                    return JSONValue::Str(String::from(s));
-                },
-            }
+            return JSONValue::Str(parse_string(&tokens, cursor));
         },
         "true" => {
             // Parsing true value
@@ -295,11 +291,12 @@ fn main() -> Result<()> {
         eprintln!("ERROR: please supply one argument being the file path");
         exit(1);
     }
-    // TODO: Check if .json file extension.
 
-    let file_path = &argv[1];
+    let file_path = Path::new(&argv[1]);
+    assert_eq!(file_path.extension().and_then(OsStr::to_str), Some("json"));
+
     let bytes = fs::read(file_path).map_err(|err| {
-        eprintln!("ERROR: could not read file {file_path}: {err}");
+        eprintln!("ERROR: could not read file {:?}: {err}", file_path);
         exit(1);
     })?;
 
@@ -314,9 +311,32 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-/*
 #[cfg(test)]
 mod tests {
+    mod parse_string {
+        use super::super::{Cell, parse_string};
+        #[test]
+        fn test_parse_string_1() {
+            let tokens = vec!["\"".to_string(), "hello".to_string(), "\"".to_string()];
+            let cursor = Cell::new(1 as usize);
+            let x = parse_string(&tokens, &cursor);
+            assert_eq!(x, "hello".to_string());
+        }
 
+        #[test]
+        fn test_parse_string_2() {
+            let tokens = vec!["\"".to_string(), "".to_string(), "\"".to_string()];
+            let cursor = Cell::new(1 as usize);
+            let x = parse_string(&tokens, &cursor);
+            assert_eq!(x, "".to_string());
+        }
+
+        #[test]
+        fn test_parse_string_3() {
+            let tokens = vec!["\"".to_string(), "\"".to_string(), "\"".to_string()];
+            let cursor = Cell::new(1 as usize);
+            let x = parse_string(&tokens, &cursor);
+            assert_eq!(x, "\"".to_string());
+        }
+    }
 }
-*/
