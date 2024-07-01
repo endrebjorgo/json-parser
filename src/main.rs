@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::cell::Cell;
 use std::path::Path;
 use std::ffi::OsStr;
+use std::str::FromStr;
 
 type Result<T> = std::result::Result<T, ()>;
 
@@ -38,7 +39,8 @@ fn tokenize(bytes: &Vec<u8>) -> Vec<String> {
                 }
                 escape = false;
             },
-            '{' | '}' | '[' | ']' | ':' | ',' | '+' | '-' | '.' => {
+            //'{' | '}' | '[' | ']' | ':' | ',' | '+' | '-' | '.' => {
+            '{' | '}' | '[' | ']' | ':' | ',' => {
                 // Special characters. Treated as normal characters in string
                 if in_string {
                     curr_token.push(c);
@@ -86,18 +88,13 @@ fn tokenize(bytes: &Vec<u8>) -> Vec<String> {
                 }
             },
             'u' => {
-                // Unicode character. Not implemented yet.
+                // Unicode character. TODO: Not implemented yet.
                 curr_token.push(c);
                 escape = false;
             },
             '\"' => {
                 // Quotes. Signify the start/end of a string, but not if they 
                 // are escaped inside of a string.
-                
-                // TODO: Problem arises when there is a one character string 
-                // containing an escaped ". These are basically parsed the same 
-                // as a quote. They need to be differentiated...
-                
                 if escape {
                     assert!(in_string);
                     curr_token.push(c);
@@ -120,27 +117,6 @@ fn tokenize(bytes: &Vec<u8>) -> Vec<String> {
                         tokens.push(curr_token.iter().collect());
                         curr_token.clear();
                     }
-                }
-                escape = false;
-            },
-            'E' | 'e' => {
-                // Exponent marker. Become a single token if not in a string and
-                // if preceded by a number
-                if in_string {
-                    curr_token.push(c);
-                    continue;
-                }
-                match curr_token.iter().last() {
-                    Some(n) => {
-                        if ('0'..='9').contains(n) {
-                            tokens.push(curr_token.iter().collect());
-                            curr_token.clear();
-                            tokens.push(c.to_string());
-                        } else {
-                            curr_token.push(c);
-                        }
-                    },
-                    None => unreachable!(),
                 }
                 escape = false;
             },
@@ -232,51 +208,10 @@ fn parse_array(tokens: &Vec<String>, cursor: &Cell<usize>) -> JSONValue {
 }
 
 fn parse_number(tokens: &Vec<String>, cursor: &Cell<usize>) -> JSONValue {
-    let mut num: f64 = 0.0;
-    let mut exp: f64 = 0.0;
-
-    match tokens[cursor.get()].as_str() {
-        "+" => {
-            cursor.set(cursor.get() + 1);
-            num = 1.0;
-        },
-        "-" => {
-            cursor.set(cursor.get() + 1);
-            num = -1.0;
-        },
-        _ => {},
-    }
-
-    let num_t = &tokens[cursor.get()].as_str();
-    num *= f64::from(i32::from_str_radix(num_t, 10).unwrap());
-
+    let token = &tokens[cursor.get()];
+    let number = f64::from_str(token).unwrap();
     cursor.set(cursor.get() + 1);
-
-    match tokens[cursor.get()].as_str() {
-        "." => {
-            // The number (before a potential exponent) is a float.
-            cursor.set(cursor.get() + 1);
-        },
-        "E" | "e" => {
-            // The number has an exponent and the first part is an int.
-            cursor.set(cursor.get() + 1);
-            match tokens[cursor.get()].as_str() {
-                "+" => {
-                    cursor.set(cursor.get() + 1);
-                    exp = 1.0;
-                },
-                "-" => {
-                    cursor.set(cursor.get() + 1);
-                    exp = -1.0;
-                },
-                _ => unreachable!(),
-            }
-        },
-        _ => {
-            // TODO: Is this just an int then?
-        },
-    }
-    return JSONValue::Num(1.0);
+    return JSONValue::Num(number);
 }
 
 fn parse_string(tokens: &Vec<String>, cursor: &Cell<usize>) -> String {
@@ -327,16 +262,10 @@ fn parse_value(tokens: &Vec<String>, cursor: &Cell<usize>) -> JSONValue {
             cursor.set(cursor.get() + 1);
             return JSONValue::Null;
         },
-        x => {
+        _ => {
             // Parsing number (TODO: Is this true?)
             // Temporary workaround to not bother implementing numbers yet...
-            let mut c = cursor.get();
-            let forbidden_tokens = vec![",", "\"", "]", "}"];
-            while !forbidden_tokens.contains(&tokens[c].as_str()) {
-                c += 1;
-            }
-            cursor.set(c);
-            return JSONValue::Num(1.0);
+            return parse_number(&tokens, cursor);
         },
     }
 }
