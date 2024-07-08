@@ -5,6 +5,7 @@ use std::cell::Cell;
 use std::path::Path;
 use std::ffi::OsStr;
 use std::str::FromStr;
+use std::fmt;
 
 #[derive(Debug)]
 enum JSONValue {
@@ -14,6 +15,32 @@ enum JSONValue {
     Num(f64),
     Bool(bool),
     Null,
+}
+
+impl fmt::Display for JSONValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            JSONValue::Obj(hm) => {
+                write!(f, "{}", "{\n");
+                for (key, value) in hm.iter() {
+                    write!(f, "    {}: {},\n", key, value);
+                }
+                write!(f, "{}", "}")
+            },
+            JSONValue::Arr(v) => {
+                write!(f, "[\n");
+                for x in v.iter() {
+                    write!(f, "    {},\n", x);
+                }
+                write!(f, "{}", "]")
+            },
+            JSONValue::Str(s) => write!(f, "\"{}\"", s.replace("\\", "\\\\")),
+            JSONValue::Num(n) => write!(f, "{}", n),
+            JSONValue::Bool(b) => write!(f, "{}", b),
+            JSONValue::Null => write!(f, "{}", "null"),
+            _ => unreachable!(),
+        }
+    }
 }
 
 fn parse_json(bytes: &Vec<u8>) -> JSONValue {
@@ -297,7 +324,8 @@ fn main() -> Result<()> {
         println!("Token {:03}: {}",i , r);
     }
     let x = parse_json(&bytes);
-    println!("{:?}", x);
+    println!("{}", x);
+    //println!("{:?}", x);
 
     Ok(())
 }
