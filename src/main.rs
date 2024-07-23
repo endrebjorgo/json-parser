@@ -6,6 +6,7 @@ use std::path::Path;
 use std::ffi::OsStr;
 use std::str::FromStr;
 use std::fmt;
+use std::result::Result;
 
 #[derive(Debug)]
 enum JSONValue {
@@ -15,6 +16,56 @@ enum JSONValue {
     Num(f64),
     Bool(bool),
     Null,
+}
+
+impl JSONValue {
+    fn get_obj(self) -> Result<HashMap<String, JSONValue>, &'static str> {
+        if let JSONValue::Obj(hm) = self {
+            return Ok(hm);
+        } else {
+            return Err("Not of type JSONValue::Obj");
+        }
+    }
+
+    fn get_arr(self) -> Result<Vec<JSONValue>, &'static str> {
+        if let JSONValue::Arr(a) = self {
+            return Ok(a);
+        } else {
+            return Err("Not of type JSONValue::Arr");
+        }
+    }
+
+    fn get_str(self) -> Result<String, &'static str> {
+        if let JSONValue::Str(s) = self {
+            return Ok(s);
+        } else {
+            return Err("Not of type JSONValue::Str");
+        }
+    }
+
+    fn get_num(self) -> Result<f64, &'static str> {
+        if let JSONValue::Num(n) = self {
+            return Ok(n);
+        } else {
+            return Err("Not of type JSONValue::Num");
+        }
+    }
+
+    fn get_bool(self) -> Result<bool, &'static str> {
+        if let JSONValue::Bool(b) = self {
+            return Ok(b);
+        } else {
+            return Err("Not of type JSONValue::Bool");
+        }
+    }
+    
+    fn get_null(self) -> Result<String, &'static str> {
+        if let JSONValue::Null = self {
+            return Ok("null".to_string());
+        } else {
+            return Err("Not of type JSONValue::Null");
+        }
+    }
 }
 
 impl fmt::Display for JSONValue {
@@ -299,9 +350,9 @@ fn parse_number(tokens: &Vec<String>, cursor: &Cell<usize>) -> JSONValue {
     return JSONValue::Num(number);
 }
 
-type Result<T> = std::result::Result<T, ()>;
+type MainResult<T> = Result<T, ()>;
 
-fn main() -> Result<()> {
+fn main() -> MainResult<()> {
     let argv = env::args().collect::<Vec<String>>();
     let argc = argv.len();
 
